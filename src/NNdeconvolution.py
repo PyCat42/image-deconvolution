@@ -1,3 +1,6 @@
+import torch
+from torch import nn
+
 class DoubleConvxReLU_NoNorm(nn.Module):
     """
     U-Net uses (3x3 convolution followed by ReLU activation) x 2.
