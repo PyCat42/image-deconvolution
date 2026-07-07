@@ -1,5 +1,6 @@
 import torch
 from tqdm.auto import tqdm
+import pandas as pd
 
 from metric_helpers import mae, psnr, ssim
 
@@ -7,7 +8,7 @@ class EarlyStopping():
     """
     Early stops the training if validation loss doesn't improve by more than min_delta after a given patience.
     """
-    def __init__(self, patience=20, min_delta=1e-4, path=None):
+    def __init__(self, patience=20, min_delta=1e-4, path=None, filename=None):
         self.patience = patience
         self.min_delta = min_delta
 
@@ -19,6 +20,10 @@ class EarlyStopping():
 
         # Where to save best model to (if none, model is not saved)
         self.path = path
+        if self.path is not None:
+            self.dir_path = Path(path)
+            self.dir_path.mkdir(parents=True, exist_ok=True)
+        self.filename = filename
 
     def __call__(self, val_loss, model, epoch):
         if val_loss < self.best_loss - self.min_delta:
@@ -26,7 +31,11 @@ class EarlyStopping():
             self.best_epoch = epoch
             self.epochs_wo_improvement = 0
             if self.path is not None:
-                torch.save(model.state_dict(), self.path)
+                torch.save(
+                    model.state_dict(),
+                    self.dir_path / f"{self.filename}.pth"
+                )
+
         else:
             self.epochs_wo_improvement += 1
             if self.epochs_wo_improvement >= self.patience:
@@ -35,16 +44,13 @@ class EarlyStopping():
                 self.early_stop = True
 
 def train_model(model, dataloader,
-                optimizer, loss):
+                optimizer, loss_func):
     """
     Model training loop.
     :param model:
     :param dataloader:
     :param optimizer:
-    :param loss:
-    :param mae:
-    :param psnr:
-    :param ssim:
+    :param loss_func:
     :return:
     """
     train_time_start = default_timer()
@@ -84,6 +90,7 @@ def train_model(model, dataloader,
         optimizer.step()
 
     # Get average loss and MAE per batch
+    train_batches = len(train_dataloader)
     avg_loss = accumulated_loss / train_batches
     avg_mae = accumulated_mae / train_batches
     avg_psnr = accumulated_psnr / train_batches
@@ -95,15 +102,12 @@ def train_model(model, dataloader,
 
     return avg_loss, avg_mae, avg_psnr, avg_ssim, train_time
 
-def validate_model(model, dataloader, loss):
+def validate_model(model, dataloader, loss_func):
     """
     Model validation loop.
     :param model:
     :param dataloader:
-    :param loss:
-    :param mae:
-    :param psnr:
-    :param ssim:
+    :param loss_func:
     :return:
     """
     accumulated_val_loss = 0.0
@@ -129,6 +133,7 @@ def validate_model(model, dataloader, loss):
             accumulated_val_ssim += ssim(val_pred, Y_val, device=device).detach().cpu().item()
 
         # Get average loss and metrics per batch
+        validation_batches = len(validation_dataloader)
         avg_val_loss = accumulated_val_loss / validation_batches
         avg_val_mae = accumulated_val_mae / validation_batches
         avg_val_psnr = accumulated_val_psnr / validation_batches
@@ -137,20 +142,17 @@ def validate_model(model, dataloader, loss):
         return avg_val_loss, avg_val_mae, avg_val_psnr, avg_val_ssim
 
 def train_val_loop(model, train_dataloader, validation_dataloader,
-                  optimizer, loss,
+                  optimizer, loss_func,
                   scheduler, max_epochs,
                   patience, min_delta, do_early_stopping=True,
-                  path=None):
+                  path=None, filename=None):
     """
     Model training and validation.
     :param model:
     :param train_dataloader:
     :param validation_dataloader:
     :param optimizer:
-    :param loss:
-    :param mae:
-    :param psnr:
-    :param ssim:
+    :param loss_func:
     :param scheduler:
     :param max_epochs:
     :param patience:
@@ -173,9 +175,8 @@ def train_val_loop(model, train_dataloader, validation_dataloader,
     validation_ssim_vals = []
 
     early_stopping = EarlyStopping(
-        patience=patience,
-        min_delta=min_delta,
-        path=path
+        patience, min_delta,
+        path, filename
     )
 
     train_time_accumulated = 0
@@ -183,14 +184,14 @@ def train_val_loop(model, train_dataloader, validation_dataloader,
     for epoch in tqdm(range(max_epochs)):
         print(f"\nEPOCH: {epoch}\n----------------------")
 
-        avg_loss, avg_mae, avg_psnr, avg_ssim, train_time = train_model(model, train_dataloader, optimizer, loss)
+        avg_loss, avg_mae, avg_psnr, avg_ssim, train_time = train_model(model, train_dataloader, optimizer, loss_func)
         train_time_accumulated += train_time
         train_loss_vals.append(avg_loss)
         train_mae_vals.append(avg_mae)
         train_psnr_vals.append(avg_psnr)
         train_ssim_vals.append(avg_ssim)
 
-        avg_val_loss, avg_val_mae, avg_val_psnr, avg_val_ssim = validate_model(model, validation_dataloader, loss)
+        avg_val_loss, avg_val_mae, avg_val_psnr, avg_val_ssim = validate_model(model, validation_dataloader, loss_func)
         validation_loss_vals.append(avg_val_loss)
         validation_mae_vals.append(avg_val_mae)
         validation_psnr_vals.append(avg_val_psnr)
@@ -211,10 +212,114 @@ def train_val_loop(model, train_dataloader, validation_dataloader,
             if early_stopping.early_stop:
                 print(f"Stopping early at epoch {epoch + 1}!")
                 if path is not None:
-                    print(f"Best model saved at epoch {early_stopping.best_epoch} to {path}...")
+                    print(f"Best model saved at epoch {early_stopping.best_epoch} to file {filename} in {path}...")
                 print("***********************************************")
                 break
 
     return (train_loss_vals, train_mae_vals, train_psnr_vals, train_ssim_vals, train_time_accumulated,
             validation_loss_vals, validation_mae_vals, validation_psnr_vals, validation_ssim_vals,
             early_stopping.best_epoch)
+
+def run_experiment(model, train_dataloader, validation_dataloader,
+                   mae_share, edge_share, ssim_share, mse_share,
+                   learning_rate,
+                   scheduler_factor, scheduler_patience,
+                   max_epochs, patience, min_delta, do_early_stopping,
+                   device, seed, path=None, filename="new_model"):
+    # Define loss function
+    loss_func = HybridLoss(
+        device,
+        mae_share=mae_share,
+        edge_share=edge_share,
+        ssim_share=ssim_share,
+        mse_share=mse_share
+    ).to(device)
+
+    # Define optimizer
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=learning_rate
+    )
+
+    # Define scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=scheduler_factor,
+        patience=scheduler_patience
+    )
+
+    # Saving
+    if path is not None:
+        dir_path = Path(path)
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Training & Validation
+    (train_loss_vals, train_mae_vals, train_psnr_vals, train_ssim_vals,
+     train_time, validation_loss_vals, validation_mae_vals, validation_psnr_vals, validation_ssim_vals,
+     best_epoch) = train_val_loop(
+        model, train_dataloader, validation_dataloader,
+        optimizer, loss_func, mae, psnr, ssim,
+        scheduler,
+        max_epochs, patience, min_delta, do_early_stopping,
+        path, filename)
+
+    # Save metrics values from each epoch to dataframe
+    df_metrics = pd.DataFrame({
+        "train_loss_vals": train_loss_vals,
+        "train_mae_vals": train_mae_vals,
+        "train_psnr_vals": train_psnr_vals,
+        "train_ssim_vals": train_ssim_vals,
+
+        "validation_loss_vals": validation_loss_vals,
+        "validation_mae_vals": validation_mae_vals,
+        "validation_psnr_vals": validation_psnr_vals,
+        "validation_ssim_vals": validation_ssim_vals
+    })
+    if path is not None:
+        df_metrics.to_csv(
+            dir_path / f"{filename}_metrics.csv",
+            index=False
+        )
+
+    # Save general model information to dataframe
+    df_about = pd.DataFrame({
+        "rnd_seed": SEED,
+
+        "overlap_share": OVERLAP,
+
+        "num_trainable_params": num_trainable_params,
+
+        "mae_share": MAE_SHARE,
+        "edge_share": EDGE_SHARE,
+        "ssim_share": SSIM_SHARE,
+        "mse_share": MSE_SHARE,
+
+        "optimizer": "Adam",
+        "initial_learning_rate": LEARNING_RATE,
+
+        "scheduler_factor": SCHEDULER_FACTOR,
+        "scheduler_patience": SCHEDULER_PATIENCE,
+
+        "batch_size": BATCH_SIZE,
+
+        "train_time": train_time,
+
+        "max_epochs": MAX_EPOCHS,
+        "best_epoch": best_epoch,
+        "best_epoch_train_loss": train_loss_vals[best_epoch],
+        "best_epoch_train_mae": train_mae_vals[best_epoch],
+        "best_epoch_train_psnr": train_psnr_vals[best_epoch],
+        "best_epoch_train_ssim": train_ssim_vals[best_epoch],
+        "best_epoch_validation_loss": validation_loss_vals[best_epoch],
+        "best_epoch_validation_mae": validation_mae_vals[best_epoch],
+        "best_epoch_validation_psnr": validation_psnr_vals[best_epoch],
+        "best_epoch_validation_ssim": validation_ssim_vals[best_epoch]
+    })
+    if path is not None:
+        df_about.to_csv(
+            dir_path / f"{filename}_about.csv",
+            index=False
+        )
+
+    return df_metrics, df_about
