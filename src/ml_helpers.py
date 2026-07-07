@@ -11,7 +11,7 @@ class EarlyStopping():
         self.patience = patience
         self.min_delta = min_delta
 
-        # Track loss impovement
+        # Track loss improvement
         self.best_loss = float("inf")
         self.best_epoch = 0
         self.epochs_wo_improvement = 0
@@ -34,12 +34,12 @@ class EarlyStopping():
                 print(f"No improvement for {self.patience} epochs!")
                 self.early_stop = True
 
-def train_model(model, train_dataloader,
+def train_model(model, dataloader,
                 optimizer, loss):
     """
     Model training loop.
     :param model:
-    :param train_dataloader:
+    :param dataloader:
     :param optimizer:
     :param loss:
     :param mae:
@@ -60,7 +60,7 @@ def train_model(model, train_dataloader,
 
     # *** TRAINING ***
     model.train()
-    for X, Y, *_ in tqdm(train_dataloader):
+    for X, Y, *_ in tqdm(dataloader):
         # Move tensors to device
         X, Y = X.to(device), Y.to(device)
 
@@ -95,11 +95,11 @@ def train_model(model, train_dataloader,
 
     return avg_loss, avg_mae, avg_psnr, avg_ssim, train_time
 
-def validate_model(model, train_dataloader, loss):
+def validate_model(model, dataloader, loss):
     """
     Model validation loop.
     :param model:
-    :param train_dataloader:
+    :param dataloader:
     :param loss:
     :param mae:
     :param psnr:
@@ -114,7 +114,7 @@ def validate_model(model, train_dataloader, loss):
     # *** VALIDATION ***
     model.eval()
     with torch.inference_mode():
-        for X_val, Y_val, *_ in tqdm(validation_dataloader):
+        for X_val, Y_val, *_ in tqdm(dataloader):
             # Move tensors to device
             X_val, Y_val = X_val.to(device), Y_val.to(device)
 
@@ -136,7 +136,7 @@ def validate_model(model, train_dataloader, loss):
 
         return avg_val_loss, avg_val_mae, avg_val_psnr, avg_val_ssim
 
-def train_val_loop(model, train_dataloader,
+def train_val_loop(model, train_dataloader, validation_dataloader,
                   optimizer, loss,
                   scheduler, max_epochs,
                   patience, min_delta, do_early_stopping=True,
@@ -145,6 +145,7 @@ def train_val_loop(model, train_dataloader,
     Model training and validation.
     :param model:
     :param train_dataloader:
+    :param validation_dataloader:
     :param optimizer:
     :param loss:
     :param mae:
@@ -189,7 +190,7 @@ def train_val_loop(model, train_dataloader,
         train_psnr_vals.append(avg_psnr)
         train_ssim_vals.append(avg_ssim)
 
-        avg_val_loss, avg_val_mae, avg_val_psnr, avg_val_ssim = validate_model(model, train_dataloader, loss)
+        avg_val_loss, avg_val_mae, avg_val_psnr, avg_val_ssim = validate_model(model, validation_dataloader, loss)
         validation_loss_vals.append(avg_val_loss)
         validation_mae_vals.append(avg_val_mae)
         validation_psnr_vals.append(avg_val_psnr)
