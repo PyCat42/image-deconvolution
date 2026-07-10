@@ -1,3 +1,11 @@
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+import random
+import torch
+from pathlib import Path
+
+
 def side_by_side_comp(clean, blurred, estimate=None, filename=None):
     """
     Plots detected image and estimated original side by side.
@@ -28,13 +36,26 @@ def side_by_side_comp(clean, blurred, estimate=None, filename=None):
 
     plt.show()
 
-def plot_random_examples(dataset, model=None, num_examples=3, device="cpu", seed=None):
+def plot_random_examples(dataset, model=None,
+                         num_examples=3,
+                         device="cpu", seed=None):
+    """
+    Plots original, blurred and reconstructed image for random dataset examples.
+    :param dataset: test dataset
+    :param model: trained NN model
+    :param num_examples: number of examples to plot
+    :param device: "cpu" (default) or "cuda"
+    :param seed: random seed for reproducibility
+    :return:
+    """
     if seed:
         random.seed(seed)
 
+    # Select random examples
     total_samples = len(dataset)
     random_idx = random.sample(range(total_samples), min(num_examples, total_samples))
 
+    # Run evaluation
     for count, idx in enumerate(random_idx):
         x, y = dataset[idx]
         clean_img_np = y.squeeze(0).detach().cpu().numpy()
@@ -51,6 +72,7 @@ def plot_random_examples(dataset, model=None, num_examples=3, device="cpu", seed
 
         blurred_img_np = blurred_img.squeeze(0).detach().cpu().numpy()
 
+        # Plot
         side_by_side_comp(clean=clean_img_np, blurred=blurred_img_np, estimate=estimated_img_np)
 
 def plot_curves(epochs_range, train_vals, validation_vals, var_to_plot="Loss", filename=None):
@@ -76,3 +98,142 @@ def plot_curves(epochs_range, train_vals, validation_vals, var_to_plot="Loss", f
         plt.savefig(filename)
 
     plt.show()
+
+def validation_metrics_comparison(model_files, metric_name="validation_loss_vals", filename=None):
+    """
+    Plots chosen validation metric for multiple models on the same plot for comparison.
+    :param model_files:
+    :param metric_name:
+    :param filename:
+    :return:
+    """
+    plt.figure(figsize=(10, 6))
+    cmap = plt.get_cmap("cool")
+    num_models = len(model_files)
+
+    for idx, (model_name, file_path) in enumerate(model_files.items()):
+        # Load model dataframe
+        path = Path(file_path)
+        df = pd.read_csv(path)
+        if metric_name not in df.columns:
+            print(f"{metric_name} column not present in dataframe")
+            continue
+
+        # Pick color for a model
+        color_idx = idx / (num_models - 1)
+        color = cmap(color_idx)
+
+        epochs = range(1, len(df) + 1)
+        plt.plot(epochs, df[metric_name], label=model_name, color=color, linewidth=2)
+
+    # Formatting the plot
+    clean_title = metric_name.replace("_vals", "").replace("_", " ")
+    plt.title(f"Model Comparison: {clean_title}")
+    plt.xlabel("Epochs")
+    plt.ylabel(clean_title)
+
+    plt.legend()
+
+    if filename is not None:
+        plt.savefig(filename)
+    plt.show()
+
+def plot_comparative_results(df, save_name=None):
+    """
+    Plots comparison between RL and NN results
+    :param df: dataframe containing results (created by comparative_testing function)
+    :param save_name: prefix with which to save plots
+    :return:
+    """
+    metrics_to_plot = [
+        ("MAE", "rl_mae_vals", "nn_mae_vals"),
+        ("PSNR", "rl_psnr_vals", "nn_psnr_vals"),
+        ("dPSNR", "rl_delta_psnr_vals", "nn_delta_psnr_vals"),
+        ("SSIM", "rl_ssim_vals", "nn_ssim_vals")
+    ]
+
+    palette = {"Richardson-Lucy": "cyan", "CNN": "magenta"}
+
+    for metric_name, rl_vals, nn_vals in metrics_to_plot:
+        rl_mean, rl_std = df[rl_vals].mean(), df[rl_vals].std()
+        nn_mean, nn_std = df[nn_vals].mean(), df[nn_vals].std()
+
+        df_long = pd.melt(
+            df[[rl_vals, nn_vals]],
+            var_name="Method",
+            value_name=metric_name,
+        )
+        df_long["Method"] = df_long["Method"].map(
+            {rl_vals: "Richardson-Lucy", nn_vals: "CNN"}
+        )
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5), width_ratios=[1.2, 0.8])
+
+        # LEFT: Distribution + Mean/Std
+        sns.histplot(
+            data=df_long,
+            x=metric_name,
+            hue="Method",
+            kde=True,
+            palette=palette,
+            ax=axes[0],
+            alpha=0.5,
+            element="step"
+        )
+
+        axes[0].axvline(
+            rl_mean,
+            color="blue",
+            linestyle="--",
+            linewidth=2,
+            label=f"RL Mean: {rl_mean:.3f}",
+        )
+        axes[0].axvline(
+            nn_mean,
+            color="purple",
+            linestyle="--",
+            linewidth=2,
+            label=f"CNN Mean: {nn_mean:.3f}",
+        )
+
+        axes[0].set_title(f"Distribution Comparisson: {metric_name}")
+        axes[0].set_xlabel(metric_name)
+        axes[0].set_ylabel("Density")
+        axes[0].legend()
+
+        # RIGHT: Boxplot
+        sns.boxplot(
+            data=df_long,
+            x="Method",
+            y=metric_name,
+            hue="Method",
+            palette=palette,
+            ax=axes[1],
+            width=0.5,
+            showmeans=True,
+            legend=False,
+        )
+        axes[1].set_title(f"Spread & Outliers: {metric_name}")
+        axes[1].set_xlabel("Method")
+        axes[1].set_ylabel(metric_name)
+
+        stats_text = (
+            "Stats Summary:\n"
+            f"RL: {rl_mean:.3f} +- {rl_std:.3f}\n"
+            f"CNN: {nn_mean:.3f} +- {nn_std:.3f}"
+        )
+        axes[1].text(
+            0.35,
+            0.95,
+            stats_text,
+            fontsize=8,
+            transform=axes[1].transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.5, edgecolor="black"),
+        )
+
+        plt.tight_layout()
+
+        if save_name is not None:
+            plt.savefig(f"{save_name}_{metric_name}.png")
+        plt.show()
