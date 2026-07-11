@@ -4,6 +4,7 @@ import seaborn as sns
 import random
 import torch
 from pathlib import Path
+import os
 
 
 def side_by_side_comp(clean, blurred, estimate=None, filename=None):
@@ -138,13 +139,17 @@ def validation_metrics_comparison(model_files, metric_name="validation_loss_vals
         plt.savefig(filename)
     plt.show()
 
-def plot_comparative_results(df, save_name=None):
+def plot_comparative_results(df, path="comparison", save_name=None):
     """
     Plots comparison between RL and NN results
     :param df: dataframe containing results (created by comparative_testing function)
     :param save_name: prefix with which to save plots
     :return:
     """
+    if path is not None:
+        dir_path = Path(path)
+        dir_path.mkdir(parents=True, exist_ok=True)
+
     metrics_to_plot = [
         ("MAE", "rl_mae_vals", "nn_mae_vals"),
         ("PSNR", "rl_psnr_vals", "nn_psnr_vals"),
@@ -234,6 +239,6 @@ def plot_comparative_results(df, save_name=None):
 
         plt.tight_layout()
 
-        if save_name is not None:
-            plt.savefig(f"{save_name}_{metric_name}.png")
+        if path is not None and save_name is not None:
+            plt.savefig(os.path.join(dir_path, f"{save_name}_{metric_name}.png"))
         plt.show()
