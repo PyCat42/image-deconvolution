@@ -242,3 +242,42 @@ def plot_comparative_results(df, path="comparison", save_name=None):
         if path is not None and save_name is not None:
             plt.savefig(os.path.join(dir_path, f"{save_name}_{metric_name}.png"))
         plt.show()
+
+def plot_reconstruction_comparison(target, input_img,
+                                   rl_estimate, rl_best_iter,
+                                   cnn_estimate,
+                                   path=None, save_name="reco_comp"):
+    """
+    Creates side by side plot of degraded, RL reconstructed, NN reconstructed and original image
+    :param target: original image
+    :param input_img: blured image
+    :param rl_estimate: Richardson-Lucy estimate of the original image
+    :param rl_best_iter: best RL iteration
+    :param cnn_estimate: cnn model estimate of the original image
+    :param path: path to which to save outputs
+    :param save_name: name of the file to which to save created plots
+    :return:
+    """
+    # Plot degraded, RL reconstructed, NN reconstructed and original image side-by-side
+    fig, ax = plt.subplots(1, 4, figsize=(21, 5))
+
+    ax[0].imshow(input_img, cmap='gray', vmin=0.0, vmax=1.0)
+    ax[0].set_title('Blurred')
+
+    ax[1].imshow(rl_estimate, cmap='gray', vmin=0.0, vmax=1.0)
+    ax[1].set_title(f'RL (Best Iter={rl_best_iter})')
+
+    ax[2].imshow(cnn_estimate, cmap='gray', vmin=0.0, vmax=1.0)
+    ax[2].set_title('NN')
+
+    ax[3].imshow(target, cmap='gray', vmin=0.0, vmax=1.0)
+    ax[3].set_title('Original')
+
+    if save_name is not None:
+        if path is not None:
+            save_dir = Path(path)
+            save_dir.mkdir(parents=True, exist_ok=True)
+            plt.savefig(os.path.join(save_dir, f"{save_name}_plot.png"), dpi=300)
+        plt.savefig(f"{save_name}_plot.png", dpi=300)
+
+    plt.show()

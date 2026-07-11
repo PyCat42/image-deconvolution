@@ -1,12 +1,16 @@
+import os.path
+
 import torch
 import pandas as pd
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
 
 from src.data_helpers import get_dataset_stats
-from src.RLdeconvolution import RL_test, RLdeconvolve
+from src.RLdeconvolution import RL_test, RLdeconvolve, get_RL_estimate
 from src.ml_helpers import test_model
 from src.metric_helpers import psnr, ssim, mae
+from src.plotting_helpers import plot_reconstruction_comparison
 
 
 def model_comparison_table(model_files, filename=None):
@@ -112,23 +116,31 @@ def comparative_testing(dataset, dataloader, model, model_about_df,
 
     return df
 
-def prior_testing(target, input, psf, model, device="cpu"):
+def prior_testing(target, input_img, psf, model, device,
+                  path="prior_testing", save_name="prior_test"):
     """
     Test how well NN and RL perform on individual examples.
     Done to determine how strongly NN uses it's prior knowledge.
     :param target: original image
-    :param input: blured image
+    :param input_img: blured image
     :param psf: point spread function
     :param model: trained model
-    :param device: "cpu" (default) or "cuda
+    :param device: "cpu" (default) or "cuda"
+    :param path: path to which to save outputs
+    :param save_name: name of the file to which to save created plots
     :return: dataframe containing metric comparison results
+            plots this dataframe as table
+            creates side by side plot of degraded, RL reconstructed, NN reconstructed and original image
     """
-    input_tensor = torch.from_numpy(input).float().unsqueeze(0).unsqueeze(0).to(device)
+    if path is not None:
+        save_dir = Path(path)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+    input_tensor = torch.from_numpy(input_img).float().unsqueeze(0).unsqueeze(0).to(device)
     target_tensor = torch.from_numpy(target).float().unsqueeze(0).unsqueeze(0)
 
     # Richardson-Lucy
-    rl_estimate = RLdeconvolve(input, psf)
-    rl_estimate_tensor = torch.from_numpy(rl_estimate).float().unsqueeze(0).unsqueeze(0)
+    rl_estimate, rl_best_iter, _, rl_best_psnr, rl_best_ssim, rl_best_mae = get_RL_estimate(input_img, target, psf, regularization_alpha=0.0)
 
     # CNN
     model.eval()
@@ -140,7 +152,16 @@ def prior_testing(target, input, psf, model, device="cpu"):
     cnn_estimate = cnn_estimate.squeeze().cpu().numpy()
     cnn_estimate_tensor = torch.from_numpy(cnn_estimate).float().unsqueeze(0).unsqueeze(0)
 
-    # Metrics
+    # Blurred metrics
+    blurred_psnr = psnr(input_tensor, target_tensor).item()
+    blurred_ssim = ssim(input_tensor, target_tensor, device=device).item()
+    blurred_mae = mae(input_tensor, target_tensor).item()
+
+    # CNN metrics
+    cnn_psnr = psnr(cnn_estimate_tensor, target_tensor).item()
+    cnn_ssim = ssim(cnn_estimate_tensor, target_tensor, device=device).item()
+    cnn_mae = mae(cnn_estimate_tensor, target_tensor).item()
+
     results = pd.DataFrame({
         "Method": [
             "Blurred",
@@ -148,20 +169,88 @@ def prior_testing(target, input, psf, model, device="cpu"):
             "CNN"
         ],
         "PSNR": [
-            psnr(input_tensor, target_tensor).item(),
-            psnr(rl_estimate_tensor, target_tensor).item(),
-            psnr(cnn_estimate_tensor, target_tensor).item()
+            blurred_psnr,
+            rl_best_psnr,
+            cnn_psnr
         ],
         "SSIM": [
-            ssim(input_tensor, target_tensor, device=device).item(),
-            ssim(rl_estimate_tensor, target_tensor, device=device).item(),
-            ssim(cnn_estimate_tensor, target_tensor, device=device).item()
+            blurred_ssim,
+            rl_best_ssim,
+            cnn_ssim
         ],
         "MAE": [
-            mae(input_tensor, target_tensor).item(),
-            mae(rl_estimate_tensor, target_tensor).item(),
-            mae(cnn_estimate_tensor, target_tensor).item()
+            blurred_mae,
+            rl_best_mae,
+            cnn_mae
+        ],
+        "PSNR vs Blurred": [
+            0.0,
+            f"{100 * (rl_best_psnr - blurred_psnr) / blurred_psnr:.2f} %",
+            f"{100 * (cnn_psnr - blurred_psnr) / blurred_psnr:.2f} %"
+        ],
+        "SSIM vs Blurred": [
+            0.0,
+            f"{100 * (rl_best_ssim - blurred_ssim) / blurred_ssim:.2f} %",
+            f"{100 * (cnn_ssim - blurred_ssim) / blurred_ssim:.2f} %"
+        ],
+        "MAE vs Blurred": [
+            0.0,
+            f"{100 * (blurred_mae - rl_best_mae) / blurred_mae:.2f} %",
+            f"{100 * (blurred_mae - cnn_mae) / blurred_mae:.2f} %"
         ]
     })
+
+    results.to_csv(os.path.join(save_dir, f"{save_name}_table.csv"), index=False)
+
+    # Plot created dataframe as table
+    fig, ax = plt.subplots(figsize=(14, 2.5))
+    ax.axis("off")
+
+    table = ax.table(
+        cellText=results.round(4).values,
+        colLabels=results.columns,
+        cellLoc="center",
+        loc="center"
+    )
+
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 1.8)
+
+    # Colors (25% saturation = 75% white mixed)
+    blurred_color = "#DDDDDD"   # gray
+    rl_color = "#BFEFFF"        # light cyan (25% saturation)
+    nn_color = "#FFBFFF"        # light magenta (25% saturation)
+
+    row_colors = {
+        "Blurred": blurred_color,
+        "Richardson-Lucy": rl_color,
+        "CNN": nn_color
+    }
+
+    # Apply row colors
+    for i, method in enumerate(results["Method"]):
+        for j in range(len(results.columns)):
+            table[(i + 1, j)].set_facecolor(row_colors[method])
+
+    # Header styling
+    for j in range(len(results.columns)):
+        table[(0, j)].set_text_props(weight="bold")
+
+    plt.tight_layout()
+
+    if save_dir is not None and save_name is not None:
+        plt.savefig(os.path.join(save_dir, f"{save_name}_table.png"), dpi=300)
+
+    plt.show()
+
+    plot_reconstruction_comparison(
+        target=target,
+        input_img=input_img,
+        rl_estimate=rl_estimate,
+        rl_best_iter=rl_best_iter,
+        cnn_estimate=cnn_estimate,
+        path=save_dir,
+        save_name="save_name")
 
     return results
