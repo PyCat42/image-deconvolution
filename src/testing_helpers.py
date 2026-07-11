@@ -116,8 +116,11 @@ def comparative_testing(dataset, dataloader, model, model_about_df,
 
     return df
 
-def prior_testing(target, input_img, psf, model, device,
-                  path="prior_testing", save_name="prior_test"):
+def prior_testing(target, input_img, psf, model,
+                  max_iter=300, patience = 10, min_delta = 1e-4,
+                  lambda_ssim = 5.0, gamma_mae = 100,
+                  regularization_alpha=0.0,
+                  device="cpu", path="prior_testing", save_name="prior_test"):
     """
     Test how well NN and RL perform on individual examples.
     Done to determine how strongly NN uses it's prior knowledge.
@@ -125,6 +128,14 @@ def prior_testing(target, input_img, psf, model, device,
     :param input_img: blured image
     :param psf: point spread function
     :param model: trained model
+    :param max_iter: maximum number of RL iterations
+    :param patience: number of RL iterations without improvement before early stopping is invoked
+    :param min_delta: minimal oracle score improvement that is registered as such
+    :param lambda_ssim: SSIM coefficient in oracle score
+    :param gamma_mae: MAE coefficient in oracle score
+    :param regularization_alpha: alpha used for TV regularization
+                                utilizes denoise_tv_chambolle function
+                                (default: 0.0, i.e. no regularization)
     :param device: "cpu" (default) or "cuda"
     :param path: path to which to save outputs
     :param save_name: name of the file to which to save created plots
@@ -140,7 +151,16 @@ def prior_testing(target, input_img, psf, model, device,
     target_tensor = torch.from_numpy(target).float().unsqueeze(0).unsqueeze(0)
 
     # Richardson-Lucy
-    rl_estimate, rl_best_iter, _, rl_best_psnr, rl_best_ssim, rl_best_mae = get_RL_estimate(input_img, target, psf, regularization_alpha=0.0)
+    rl_estimate, rl_best_iter, _, rl_best_psnr, rl_best_ssim, rl_best_mae = get_RL_estimate(
+        detected=input_img,
+        target=target,
+        psf=psf,
+        max_iter=max_iter,
+        patience=patience,
+        min_delta=min_delta,
+        lambda_ssim=lambda_ssim,
+        gamma_mae=gamma_mae,
+        regularization_alpha=regularization_alpha)
 
     # CNN
     model.eval()

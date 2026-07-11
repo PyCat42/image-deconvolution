@@ -171,27 +171,31 @@ def RL_test(dataset, min_delta=1e-4,
 
     return iter_vals, initial_psnr_vals, psnr_vals, mae_vals, ssim_vals
 
-def get_RL_estimate(input_img, target, psf, regularization_alpha=0.0):
+def get_RL_estimate(detected, target, psf,
+                    max_iter=300, patience = 10, min_delta = 1e-4,
+                    lambda_ssim = 5.0, gamma_mae = 100,
+                    regularization_alpha=0.0):
     """
     Runs RL algorithm on a given input image.
     Uses oracle score minimization based on knowledge of
     original image (ideal reconstruction) for early stopping.
-    :param input_img: blurred degraded image
+    :param detected: blurred degraded image
     :param target: original sharp image
     :param psf: point spread function matrix
+    :param max_iter: maximum number of RL iterations
+    :param patience: number of RL iterations without improvement before early stopping is invoked
+    :param min_delta: minimal oracle score improvement that is registered as such
+    :param lambda_ssim: SSIM coefficient in oracle score
+    :param gamma_mae: MAE coefficient in oracle score
     :param regularization_alpha: alpha used for TV regularization
                                 utilizes denoise_tv_chambolle function
                                 (default: 0.0, i.e. no regularization)
     :return: best_estimate, best_iter, initial_psnr, best_psnr, best_ssim, best_mae
     """
-    max_iter = 300
-    patience = 10
-    min_delta = 1e-4
-    lambda_ssim = 5.0
-    gamma_mae = 100
-
-    detected = input_img.squeeze().numpy().astype(np.float32)
-    target = target.squeeze().numpy().astype(np.float32)
+    if torch.is_tensor(detected):
+        detected = detected.squeeze().numpy().astype(np.float32)
+    if torch.is_tensor(target):
+        target = target.squeeze().numpy().astype(np.float32)
 
     # Initial estimate is detected image itself
     estimate = detected.copy()
