@@ -111,8 +111,8 @@ def comparative_testing(dataset, dataloader, model, model_about_df,
         dir_path = Path(path)
         dir_path.mkdir(parents=True, exist_ok=True)
 
-        filepath = dir_path / f"{filename}.csv"
-        df.to_csv(filepath, index=False)
+        filepath = dir_path / filename
+        df.to_csv(os.path.join(dir_path, filepath), index=False)
 
     return df
 
