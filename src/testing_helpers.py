@@ -271,6 +271,7 @@ def prior_testing(target, input_img, psf, model,
         rl_best_iter=rl_best_iter,
         cnn_estimate=cnn_estimate,
         path=save_dir,
-        save_name="save_name")
+        save_name=save_name
+    )
 
     return results
