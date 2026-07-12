@@ -265,6 +265,11 @@ def structured_texture_image(size=256, low_res_size=16):
     return img
 
 def get_dataset_stats(dataset):
+    """
+    Returns statistics about the artificial geometric dataset.
+    :param dataset: artificial geometric dataset
+    :return: sigma_x_vals, sigma_y_vals, kernel_size_vals, photon_flux_vals
+    """
     sigma_x_vals = []
     sigma_y_vals = []
     kernel_size_vals = []
@@ -278,3 +283,57 @@ def get_dataset_stats(dataset):
         photon_flux_vals.append(photon_flux)
 
     return sigma_x_vals, sigma_y_vals, kernel_size_vals, photon_flux_vals
+
+class BBBCDataset(Dataset):
+    def __init__(self, image_dir, size=256, sigma=None,
+                 poisson_noise=False, full_detector_model=None,
+                 data_loading=False, seed=42):
+        self.image_dir = image_dir
+
+        self.size = size
+
+        self.sigma = sigma
+        self.dark_map = torch.rand(1, self.size, self.size) * 0.02
+
+        self.poisson_noise = poisson_noise
+        self.full_detector_model = full_detector_model
+
+        self.data_loading = data_loading
+
+        self.seed = seed
+
+        self.images = sorted(
+            os.path.join(image_dir, f) for f in os.listdir(self.image_dir)
+            if f.endswith((".jpg", ".jpeg", ".tif", ".tiff", ".png"))
+        )
+
+        # Transform to adjust to expected NN input
+        self.transform = transforms.Compose([
+            transforms.Resize((self.size, self.size)),
+            # transforms.CenterCrop(self.size), # we could use this instead for very large images!
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor() # maps 0 -> 0.0, 255 -> 1.0 which matches artificial dataset
+        ])
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        if self.seed is not None:
+            unique_seed = self.seed + idx
+            np.random.seed(unique_seed)
+            torch.manual_seed(unique_seed)
+            torch.cuda.manual_seed(unique_seed)
+
+        path = self.images[idx]
+
+        img = Image.open(path)
+
+        target = self.transform(img)
+
+        # Uses the same degradation model as artificial geometric dataset
+        return apply_degradation(target=target, size=self.size,
+                                 sigma=self.sigma, dark_map=self.dark_map,
+                                 poisson_noise=self.poisson_noise, full_detector_model=self.full_detector_model,
+                                 data_loading=self.data_loading)
+
