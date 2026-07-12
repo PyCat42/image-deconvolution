@@ -277,7 +277,10 @@ def plot_reconstruction_comparison(target, input_img,
         if path is not None:
             save_dir = Path(path)
             save_dir.mkdir(parents=True, exist_ok=True)
-            plt.savefig(os.path.join(save_dir, f"{save_name}_plot.png"), dpi=300)
-        plt.savefig(f"{save_name}_plot.png", dpi=300)
+            filename = save_dir / f"{save_name}_plot.png"
+        else:
+            filename = Path(f"{save_name}_plot.png")
+
+        plt.savefig(filename, dpi=300)
 
     plt.show()
