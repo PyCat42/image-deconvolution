@@ -84,11 +84,11 @@ These techniques can smooth and slow down out noise amplification.
 
 ### Machine Learning Algorithms: U-Net-based CNN
 
-Convolutional Neural Networks (CNNs) learn transformation between the original and detected image directly,
+**Convolutional Neural Networks (CNNs)** learn transformation between the original and detected image directly,
 without requiring knowledge of PSF. They enable high-quality reconstruction and large reconstruction speed
 (once we have trained network). The downsides of using CNNs are large amount of data required for training, 
 and more importantly their limited receptive field. 
-(Transformers with their global context would resolve this problem,
+> _NOTE:_ **Transformers** with their global context would resolve this problem,
 but their training is much more demanding in every sense.)
 
 ![DeconvolutionUNet structure](images/DeconvolutionUNet_structure.png)
@@ -96,15 +96,16 @@ but their training is much more demanding in every sense.)
 #### Variations
 
 Multiple variations of model are trained:
-- V0 (Baseline): Direct Image Target, L1 Loss, No Normalization
-- V1 (BatchNorm): Direct Image Target, L1 Loss, BatchNorm
-- V2 (Residual): Residual Target, L1 Loss, BatchNorm
-- V3 (HybridLoss): Residual Target, BatchNorm, Hybrid Loss (0.7MAE + 0.3SSIM)
+- **V0 (Baseline)**: Direct Image Target, L1 Loss, No Normalization
+- **V1 (BatchNorm)**: Direct Image Target, L1 Loss, BatchNorm
+- **V2 (Residual)**: Residual Target, L1 Loss, BatchNorm
+- **V3 (HybridLoss)**: Residual Target, BatchNorm, Hybrid Loss (0.7MAE + 0.3SSIM)
 
 Adaptive stopping is implemented:
-- max = 200 epochs
-- 20 epochs w/o improvement = stop
-- min loss improvement = 1e-4
+- training is run for 200 epochs maximum
+- training stops after 20 epochs without improvement
+- minimal loss improvement that is considered as such is 1e-4
+
 Due to limited computing resources each model is trained for only 50 epochs 
 and decision on the best model is made based on this (which is, of course, not ideal).
 
@@ -116,7 +117,7 @@ All models use dataset with full detector degradation model applied for training
 
 ![](tests/nn_training/nn_comp_table.png)
 
-Baseline model showed the best performance across all parameters.
+**Baseline model** showed the best performance across all parameters.
 
 | ![](tests/nn_training/loss_curves_baseline.png) | ![](tests/nn_training/psnr_curves_baseline.png) |![](tests/nn_training/ssim_curves_baseline.png)|
 |-------------------------------------------------|-------------------------------------------------|-|
@@ -124,8 +125,8 @@ Baseline model showed the best performance across all parameters.
 ### Comparison: RL vs NN
 
 Quantitative comparison of RL VS NN model is run on 2 datasets are used 
-- dataset 1: Gaussian blur and Poisson noise included,
-- dataset 2: also includes full detector degradation model. 
+- _dataset 1:_ Gaussian blur and Poisson noise included,
+- _dataset 2:_ also includes full detector degradation model. 
 Comparison is done based on PSNR, SSIM and MSE values. 
 
 **Dataset 1:** Gauss + Poisson
