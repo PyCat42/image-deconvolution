@@ -162,8 +162,8 @@ Their performance is compared once again on selected examples:
 ![](tests/prior_testing/comp_overlapped_blur_poisson_plot.png)
 ![](tests/prior_testing/comp_overlapped_blur_poisson_table.png)
 - overlapped shape with full detector model of degradation applied:
-![](tests/prior_testing/comp_overlapped_full_plot.png)
-![](tests/prior_testing/comp_overlapped_full_table.png)
+![](tests/prior_testing/comp_overlapped_full_detector_plot.png)
+![](tests/prior_testing/comp_overlapped_full_detector_table.png)
 - **white noise:**
 ![](tests/prior_testing/comp_white_noise_plot.png)
 ![](tests/prior_testing/comp_white_noise_table.png)
